@@ -1,5 +1,6 @@
 import asyncio
 import functools
+from re import A
 
 from typing import Callable
 from typing import Any
@@ -7,7 +8,6 @@ from typing import Any
 
 from ...logging import get_logger
 
-from ... import tools
 from ... import aiotools
 
 from ...yamlconf import Option
@@ -16,12 +16,11 @@ from ...validators.basic import valid_number, valid_stripped_string
 from ...validators.basic import valid_float_f0
 from ...validators.basic import valid_float_f01
 from ...validators.net import valid_ip_or_host
-from ...validators.net import valid_port
 
 from . import BaseUserGpioDriver
 from . import GpioDriverOfflineError
 
-from intellinet_163682.intellinet_163682 import IPU
+from ...plugins.ugpio.intellinet_163682.intellinet_163682 import IPU
 
 
 # =====
@@ -70,6 +69,7 @@ class Plugin(BaseUserGpioDriver):  # pylint: disable=too-many-instance-attribute
 
     def register_output(self, pin: str, initial: (bool | None)) -> None:
         self.__initials[int(pin)] = initial
+        self.__outlet_states[int(pin)] = False
 
     def prepare(self) -> None:
         self.__pdu = IPU(self.__host, (self.__username, self.__password))
@@ -77,6 +77,8 @@ class Plugin(BaseUserGpioDriver):  # pylint: disable=too-many-instance-attribute
         for (pin, state) in self.__initials.items():
             if state is not None:
                 self.write(pin, state)
+        # to get outlet states
+        self.run()
 
     async def run(self) -> None:
         assert self.__pdu
@@ -92,7 +94,7 @@ class Plugin(BaseUserGpioDriver):  # pylint: disable=too-many-instance-attribute
                 state = False
 
             self.__outlet_states[int(i)] = state
-        self.__update_notifier.notify()
+        await self.__update_notifier.notify()
                 
 
     async def cleanup(self) -> None:
@@ -108,11 +110,11 @@ class Plugin(BaseUserGpioDriver):  # pylint: disable=too-many-instance-attribute
         assert 1 <= channel <= 8
         if state == True:
             await self.__pdu.enable_outlets(channel)
-            self.__update_notifier.notify()
+            await self.__update_notifier.notify()
 
         if state == False:
             await self.__pdu.disable_outlets(channel)
-            self.__update_notifier.notify()
+            await self.__update_notifier.notify()
 
 
     # =====
